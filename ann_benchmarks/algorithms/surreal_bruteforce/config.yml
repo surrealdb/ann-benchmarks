@@ -10,4 +10,3 @@ float:
         SURREAL-BRUTEFORCE:
           arg_groups: [{}]
           args: {}
-          query_args: [['PARALLEL', '']]

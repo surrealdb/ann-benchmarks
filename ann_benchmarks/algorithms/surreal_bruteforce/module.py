@@ -26,8 +26,8 @@ class SurrealBruteForce(BaseANN):
         self._session = requests.Session()
         self._session.auth = ('ann', 'ann')
         headers={
-            "surreal-ns": 'ann',
-            "surreal-db": 'ann',
+            "surreal-ns": 'main',
+            "surreal-db": 'main',
             "Accept": "application/json",
         }
         self._session.headers.update(headers)
@@ -71,14 +71,10 @@ class SurrealBruteForce(BaseANN):
             if r['status'] != 'OK':
                 raise RuntimeError(f"Error: {r}")
         return res
-    
-    def set_query_arguments(self, parallel):
-        self._parallel = parallel
-        print("parallel = " + self._parallel)
             
     def query(self, v, n):
         v = v.tolist()
-        j = self._checked_sql(f"SELECT id FROM items WHERE r <|{n},{self._metric}|> {v} {self._parallel};")
+        j = self._checked_sql(f"SELECT id FROM items WHERE r <|{n},{self._metric}|> {v};")
         items = []
         for item in j[0]['result']:
             id = item['id']
@@ -86,7 +82,7 @@ class SurrealBruteForce(BaseANN):
         return items
 
     def __str__(self):
-        return f"SurrealBruteForce(parallel={self._parallel})"
+        return f"SurrealBruteForce"
 
     def done(self) -> None:
         self._session.close()
