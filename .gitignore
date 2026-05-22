@@ -17,3 +17,6 @@ results/*
 venv
 
 .idea
+
+mydata/
+.python-version

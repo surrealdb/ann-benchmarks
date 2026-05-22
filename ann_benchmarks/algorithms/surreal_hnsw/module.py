@@ -1,11 +1,9 @@
-import subprocess
-import sys
 import requests
 
 from ..base.module import BaseANN
-from time import sleep
+from .._surreal_common import SurrealBatchMixin, start_server, stop_server
 
-class SurrealHnsw(BaseANN):        
+class SurrealHnsw(SurrealBatchMixin, BaseANN):
 
     def __init__(self, metric, method_param):
         if metric == "euclidean":
@@ -20,9 +18,10 @@ class SurrealHnsw(BaseANN):
             raise RuntimeError(f"unknown metric {metric}")
         self._m = method_param['M']
         self._efc = method_param['efConstruction']
-        subprocess.run(f"surreal start --allow-all -u ann -p ann -b 127.0.0.1:8000 memory &", shell=True, check=True, stdout=sys.stdout, stderr=sys.stderr)
-        print("wait for the server to be up...")
-        sleep(5)
+        # Defensive cleanup in case a prior algorithm definition left a server
+        # alive, then start fresh and block until /health is 200.
+        stop_server()
+        self._proc = start_server()
         self._session = requests.Session()
         self._session.auth = ('ann', 'ann')
         headers={
@@ -82,9 +81,13 @@ class SurrealHnsw(BaseANN):
         self._efs = ef_search
         print("ef = " + str(self._efs))
        
+    def _build_query_sql(self, v, n):
+        # `v` already a Python list (the mixin pre-converts via .tolist()).
+        return f"SELECT id FROM items WHERE r <|{n},{self._efs}|> {v};"
+
     def query(self, v, n):
         v = v.tolist()
-        j = self._checked_sql(f"SELECT id FROM items WHERE r <|{n},{self._efs}|> {v};")
+        j = self._checked_sql(self._build_query_sql(v, n))
         items = []
         for item in j[0]['result']:
             id = item['id']
@@ -96,4 +99,4 @@ class SurrealHnsw(BaseANN):
 
     def done(self) -> None:
         self._session.close()
-        subprocess.run("pkill surreal", shell=True, check=True, stdout=sys.stdout, stderr=sys.stderr)
+        stop_server()

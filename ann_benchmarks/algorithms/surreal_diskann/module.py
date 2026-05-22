@@ -3,25 +3,22 @@ import requests
 from ..base.module import BaseANN
 from .._surreal_common import SurrealBatchMixin, start_server, stop_server
 
-class SurrealBruteForce(SurrealBatchMixin, BaseANN):
+class SurrealDiskAnn(SurrealBatchMixin, BaseANN):
 
     def __init__(self, metric, method_param):
         if metric == "euclidean":
             self._metric = 'EUCLIDEAN'
-        elif metric == 'manhattan':
-            self._metric = 'MANHATTAN'
         elif metric == 'angular':
             self._metric = 'COSINE'
-        elif metric == 'hamming':
-            self._metric = 'HAMMING'
-        elif metric == 'jaccard':
-            self._metric = 'JACCARD'
         else:
             raise RuntimeError(f"unknown metric {metric}")
+        self._degree = method_param['degree']
+        self._l_build = method_param['l_build']
+        self._alpha = method_param['alpha']
         # Defensive cleanup in case a prior algorithm definition left a server
-        # alive, then start fresh (in-memory engine) and block until /health is 200.
+        # alive, then start fresh and block until /health is 200.
         stop_server()
-        self._proc = start_server(use_rocksdb=False)
+        self._proc = start_server()
         self._session = requests.Session()
         self._session.auth = ('ann', 'ann')
         headers={
@@ -37,7 +34,16 @@ class SurrealBruteForce(SurrealBatchMixin, BaseANN):
             raise RuntimeError(f"{r.text}")
         return r
 
-    def _ingest(self, dim, X): 
+    def _create_index(self, dim):
+        s = (
+            f"DEFINE INDEX ix ON items FIELDS r DISKANN "
+            f"DIMENSION {dim} DIST {self._metric} TYPE F32 "
+            f"DEGREE {self._degree} L_BUILD {self._l_build} ALPHA {self._alpha}"
+        )
+        self._checked_sql(s)
+
+
+    def _ingest(self, dim, X):
         # Fit the database per batch
         print("Ingesting vectors...")
         batch = max(20000 // dim, 1)
@@ -61,8 +67,9 @@ class SurrealBruteForce(SurrealBatchMixin, BaseANN):
 
     def fit(self, X):
         dim = X.shape[1]
+        self._create_index(dim)
         self._ingest(dim, X)
-        print("\nIndex construction done")     
+        print("\nIndex construction done")
 
     def _checked_sql(self, q):
         res = self._sql(q).json()
@@ -70,11 +77,14 @@ class SurrealBruteForce(SurrealBatchMixin, BaseANN):
             if r['status'] != 'OK':
                 raise RuntimeError(f"Error: {r}")
         return res
-            
+
+    def set_query_arguments(self, l_search):
+        self._ls = l_search
+        print("L = " + str(self._ls))
+
     def _build_query_sql(self, v, n):
         # `v` already a Python list (the mixin pre-converts via .tolist()).
-        # For brute force the second operator arg is the metric, not an EF/L.
-        return f"SELECT id FROM items WHERE r <|{n},{self._metric}|> {v};"
+        return f"SELECT id FROM items WHERE r <|{n},{self._ls}|> {v};"
 
     def query(self, v, n):
         v = v.tolist()
@@ -86,7 +96,7 @@ class SurrealBruteForce(SurrealBatchMixin, BaseANN):
         return items
 
     def __str__(self):
-        return f"SurrealBruteForce"
+        return f"SurrealDiskAnn(degree={self._degree}, l_build={self._l_build}, alpha={self._alpha}, l_search={self._ls})"
 
     def done(self) -> None:
         self._session.close()

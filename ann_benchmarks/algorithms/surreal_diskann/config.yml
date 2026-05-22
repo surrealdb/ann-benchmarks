@@ -1,0 +1,17 @@
+float:
+  euclidean:
+    - base_args: ['@metric']
+      constructor: SurrealDiskAnn
+      disabled: false
+      docker_tag: ann-benchmarks-surreal_diskann
+      module: ann_benchmarks.algorithms.surreal_diskann
+      name: surreal_diskann
+      run_groups:
+        degree-32:
+          arg_groups: [{degree: 32, l_build: 125, alpha: 1.2}]
+          args: {}
+          query_args: [[10, 20, 40, 80, 120]]
+        degree-64:
+          arg_groups: [{degree: 64, l_build: 125, alpha: 1.2}]
+          args: {}
+          query_args: [[10, 20, 40, 80, 120]]
